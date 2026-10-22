@@ -21,6 +21,7 @@ if str(ROOT) not in sys.path:
 
 from news.matichon_scraper import MatichonScraper
 from news.notebookspec_scraper import NotebookspecScraper
+from news.observability import init_sentry, report_feed_failures
 from news.optional_feeds import OPTIONAL_FEEDS
 from news.thai_business_scraper import ThaiBusinessNewsScraper
 from news.thai_tech_scraper import ThaiTechNewsScraper
@@ -83,7 +84,9 @@ def main() -> int:
         feeds = select_feeds(args.feeds)
     except ValueError as exc:
         parser.error(str(exc))
+    sentry = init_sentry("news-feeds")
     results = asyncio.run(run_feeds(args.output_dir, args.limit, feeds))
+    report_feed_failures(sentry, results, len(feeds))
     if args.json:
         print(json.dumps(results, ensure_ascii=False))
     # Non-zero when any feed failed so the parent control plane still treats

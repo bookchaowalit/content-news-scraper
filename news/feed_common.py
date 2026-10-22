@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import csv
 import html as html_lib
+import io
+import os
 import re
+import tempfile
 import unicodedata
 from datetime import datetime, timezone, tzinfo
 from email.utils import parsedate_to_datetime
@@ -160,20 +163,42 @@ def tag_terms(entry: Any, limit: int = 10) -> str:
     return ",".join(terms[:limit])
 
 
-def write_bytes(raw: bytes, path: Path) -> Path:
+def _replace_atomic(path: Path, data: bytes) -> Path:
+    """Write ``data`` to a temp file beside ``path``, fsync, then ``os.replace`` it.
+
+    The parent control plane replays these files into Bronze; readers must see the
+    previous capture or the new one, never a truncated file.
+    """
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(raw)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
     return path
+
+
+def write_bytes(raw: bytes, path: Path) -> Path:
+    return _replace_atomic(path, raw)
 
 
 def write_snapshot(path: Path, fields: list[str], rows: Iterable[Mapping[str, Any]], captured_at: str) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({**row, "captured_at": captured_at})
-    return path
+    # Render fully in memory first: a failing row must not touch the existing file.
+    buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(buffer, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({**row, "captured_at": captured_at})
+    return _replace_atomic(path, buffer.getvalue().encode("utf-8"))
 
 
 def append_history(path: Path, fields: list[str], rows: Iterable[Mapping[str, Any]], captured_at: str) -> Path:
