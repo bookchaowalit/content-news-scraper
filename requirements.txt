@@ -1,9 +1,0 @@
--c constraints.txt
-httpx==0.28.1
-beautifulsoup4==4.15.0
-feedparser==6.0.14
-lxml==6.1.3
-# Transitive floors (security): constraints.txt already pins newer versions; these keep any
-# resolution without it above published advisories.
-anyio>=4.14.2
-idna>=3.15
