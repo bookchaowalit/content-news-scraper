@@ -1,6 +1,6 @@
 # book-news-scraping
 
-**Tier:** C / tool prototype (portfolio breadth, not interview flagship)  
+**Tier:** B (catalog label; Big Loop target L3)  
 **Owner path:** `bookchaowalit/book-apps/tools/book-news-scraping`
 
 ## Purpose
@@ -20,16 +20,17 @@ Python
 ## How to run (local)
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python3 scripts/run_feeds.py --limit 20
+uv sync --frozen --all-extras          # runtime + dev tools + data-lake runtime + sentry extra
+uv run python scripts/run_feeds.py --limit 20   # live publisher traffic: run only when approved
 bash setup_cron.sh plan      # read-only; prints the data-lake runner entry
 bash setup_cron.sh status
 ```
 
 Adapters: Matichon, Bangkok Post Business, Blognone, NotebookSpec.
-Output stays in this repository's `data/exported/`. The book-job-scraping
-scheduler may still collect the same feeds as a compatibility runner.
+Output stays in this repository's `data/exported/`; snapshot and raw files are
+replaced atomically (temp file + fsync + `os.replace`). Whether the legacy
+book-job-scraping compatibility scheduler still collects the same feeds is not
+verified (no such entry in this WSL host's crontab on 2026-10-22) [ต้องยืนยัน].
 
 The approved captures can be replayed into the shared Bronze lake with the
 parent operator command:
@@ -87,6 +88,9 @@ connection errors, HTTP 429 (honouring `Retry-After`, capped at 60 s) and 5xx.
 403/404 fail immediately. `scripts/run_feeds.py` isolates publishers: a failing
 feed is reported as `{"source": ..., "error": "<ExceptionClass>"}` (no payload
 text) while the others still run, and the exit code is 1 if any feed failed.
+With the `sentry` extra installed and `SENTRY_DSN` set, such a run also sends one
+Sentry event naming the failed feeds and exception classes (`news/observability.py`;
+frame locals, request bodies and exception messages are scrubbed).
 
 Text cleaning, date parsing and CSV writing are shared in `news/feed_common.py`.
 `updated_at` is the entry's own update time and is empty when a feed has none
@@ -110,20 +114,20 @@ scheduler class are shared.
 ## Checks (offline)
 
 ```bash
-pip install -r requirements-dev.txt
-ruff check .
-python -m unittest discover -s tests -v
-python -m pytest -q
+uv sync --frozen --all-extras
+uv run ruff check . && uv run ruff format --check .
+uv run mypy .                      # gradual config in pyproject.toml
+uv run pytest -q --cov             # CI gate: total coverage >= 80%
 ```
 
 Tests replay fixtures under `tests/fixtures/` and never contact publishers.
-`requirements-dev.txt` installs the shared runtime at an exact commit, and
-`constraints.txt` pins the complete CI dependency set. The workflow asserts
-the shared helpers import before testing, so a missing runtime fails CI.
-The `news.v1` store tests need the shared `data_lake` helpers; they skip
-unless `solo-empire-data-lake` is installed or
-`SOLO_DATA_LAKE_ROOT=/path/to/solo-data-lake` is set. CI
-(`.github/workflows/ci.yml`) runs the same lint and tests.
+`uv.lock` pins the complete dependency set, including the shared
+`solo-empire-data-lake` runtime at an exact commit (dev extra; it needs Python
+3.11+). The workflow asserts the shared helpers import before testing, so a
+missing runtime fails CI instead of skipping the `news.v1` store tests.
+`tests/test_news_contract.py` checks capture rows and API items against a copy of
+`news-data-contract-v1`. CI (`.github/workflows/ci.yml`, shared
+`platform-ci-workflows` v1.1.1) runs the same checks on Python 3.11 and 3.13.
 
 ## Boundaries
 
