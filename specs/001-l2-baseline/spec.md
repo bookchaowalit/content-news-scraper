@@ -62,7 +62,7 @@ KPI plan. Review found two silent failure paths:
 
 | AC | Red (sha · command · failure) | Green |
 |---|---|---|
-| AC-01, AC-02 | `eb6cf37` · `python -m pytest -q tests/test_atomic_writes.py tests/test_observability.py` · snapshot `AssertionError` (previous rows replaced by the partial write), `AttributeError: module 'news.feed_common' has no attribute 'os'`, Sentry never initialised (6 failed, 2 passed) | `GREEN_CI` |
+| AC-01, AC-02 | `eb6cf37` · `python -m pytest -q tests/test_atomic_writes.py tests/test_observability.py` · snapshot `AssertionError` (previous rows replaced by the partial write), `AttributeError: module 'news.feed_common' has no attribute 'os'`, Sentry never initialised (6 failed, 2 passed) | [run 39756016801](https://github.com/bookchaowalit/content-news-scraper/actions/runs/39756016801) (success, 3.11 + 3.13, `3d001b1`) |
 
 ## Contract findings (news-data-contract-v1)
 
