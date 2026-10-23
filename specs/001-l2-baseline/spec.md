@@ -76,17 +76,22 @@ KPI plan. Review found two silent failure paths:
   envelope keys match. Lake-first path: exact landing bytes and the Bronze manifest are
   produced by the parent control plane, not this repo.
 
-## Schedule (planned replacement, D6)
+## Schedule (D6: Railway cron, live 2026-10-23)
 
-No change made (`setup_cron.sh` untouched). Today: `setup_cron.sh install` would add a
-crontab line every 2 hours at minute 15 running data-lake-pipelines'
-`run_news_capture.py` (collector → validate → Bronze replay, shared lock
-`data/news-feeds.lock`); it is **not installed** on this WSL host (2026-10-22). A Windows
-task or the legacy book-job-scraping collector are unverified [ต้องยืนยัน]. Planned
-replacement once owner decision D6 picks the host: one hosted job every 2 hours that runs
-the same control-plane command against the chosen lake target (R2 or the host's lake
-path) with `SENTRY_DSN` set for the collector subprocess, keeping the shared lock and the
-8-hour freshness SLO; the crontab entry is then removed with `setup_cron.sh remove`.
+Owner decision D6 (2026-10-23) put scheduled data jobs on Railway cron. Railway project
+`data-schedules`, service `news-capture`, cron `15 */2 * * *` UTC (every 2 hours, inside the
+8-hour freshness SLO), built from `deploy/railway-cron/Dockerfile` (data-lake-pipelines pinned by
+commit + this collector). Each run is `scripts/scheduled_capture.py`: the control plane's
+`run_news_capture.py` (shared lock, collector → validate → Bronze replay → per-feed freshness gate)
+against the R2 lake `s3://solo-empire-portfolio/portfolio-demo/free-cloud-e2e-001`, counts-only log,
+Sentry project `content-news-scraper` for a failed run (the collector reports feed failures itself),
+and the uptime Worker heartbeat `news-capture` (alert after 5 h). Details and rollback:
+`deploy/railway-cron/README.md`.
+
+First controlled run 2026-10-23 16:14 UTC: `status=ok`, 4 feeds (Matichon 50, Notebookspec 25,
+Bangkok Post Business 10, Blognone 10), 95 current records, 32 objects under the news-only
+prefixes, identity `(source, article_id)` unique, no empty core field. `setup_cron.sh` was never
+installed on any checked host and is kept only for a local lake; the hosted job replaces it.
 
 ## Out of scope
 
