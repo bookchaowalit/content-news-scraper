@@ -2,7 +2,7 @@
 title: KPI and Instrumentation Plan — book-news-scraping
 created: 2026-10-22
 updated: 2026-10-22
-status: draft
+status: approved
 template: architecture-docs/templates/sdlc/kpi-and-instrumentation-plan.md
 ---
 
@@ -20,7 +20,7 @@ baselines are not measured yet.
 | Status | draft |
 | Metric owner | bookchaowalit (owner) |
 | AI maker | Claude session b-data, 2026-10-22 |
-| AI reviewer | not yet reviewed [ต้องยืนยัน] |
+| AI reviewer | independent Claude reviewer subagent (`solo:solo-reviewer`, Sonnet, read-only, no maker context), 2026-10-24: approved (see Approval) |
 | Charter objectives | Roadmap `data-scrapers.yaml` goals nws-g1..nws-g4 (reproducible CI, schedule observed, docs truthful, consumer verified) |
 | Analytics / data source of truth | Bronze `articles` / `articles_history` (event_time, row counts) via the `news.v1` API and the parent coverage report; collector JSON output; Sentry (opt-in, no DSN yet) |
 | Dashboard | none yet [ต้องยืนยัน] |
@@ -79,3 +79,12 @@ OBJ-01 Fresh, attributed Thai news in the lake for briefing/research consumers
 | Date | KPI ID | Change | Reason | Baseline restated? | Approved by |
 |---|---|---|---|---|---|
 | 2026-10-22 | all | first draft | Big Loop L3 | n/a | pending |
+
+## Approval (2026-10-24)
+
+| Field | Value |
+|---|---|
+| Checker | independent Claude reviewer subagent (`solo:solo-reviewer`, Sonnet, read-only, no maker context) |
+| Approver | AI approval under the owner's process (approvals by the owner or AI with evidence; maker and checker are different agents). Recorded by Claude session oa-remainder on the owner's instruction "ทำที่เหลือให้หน่อย" (2026-10-24) |
+| Verdict | **approved** |
+| Evidence | news/observability.py job tag; scripts/run_feeds.py --json, limit 50; tests/test_news_contract.py KNOWN_GAPS; Sentry and schedule marked not live (plan understates the 2026-10-23 Railway schedule, not an overclaim). |
