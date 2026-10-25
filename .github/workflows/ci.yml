@@ -36,3 +36,22 @@ jobs:
 
   security:
     uses: bookchaowalit/platform-ci-workflows/.github/workflows/security.yml@87dc5e1c7e0416886a6371d5a101bb2ccba38edd # v1.1.1
+
+  # CD (ADR-0003, platform-ci-workflows deploy-railway v1.3.0, mode deploy): after CI passes on main,
+  # ask Railway to build exactly this commit for the cron service `news-capture` (project
+  # data-schedules). The service has no branch trigger, so nothing else deploys it. The image build
+  # runs the control plane's dry run (deploy/railway-cron/Dockerfile), so a broken image fails here.
+  # A cron job has no HTTP endpoint: the smoke URL is the uptime Worker that alerts on the
+  # news-capture heartbeat. Off unless the repository variable CD_DEPLOY is true.
+  deploy:
+    needs: [scraper, security]
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && vars.CD_DEPLOY == 'true'
+    uses: bookchaowalit/platform-ci-workflows/.github/workflows/deploy-railway.yml@761fd15ea2dae8de85c91def17814031b60987bf # v1.3.0
+    with:
+      mode: deploy
+      service-id: ba7596c8-026c-49dd-a370-0046b43bd9ec
+      environment-id: 2d0fa1ec-fc9b-43b2-bd03-158f4b281a52
+      health-url: https://solo-empire-monitor.bookchaowalit.workers.dev/status
+      health-expect: '"results"'
+    secrets:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

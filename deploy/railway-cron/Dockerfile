@@ -35,6 +35,13 @@ COPY news ${NEWS_DIR}/news
 COPY news_data ${NEWS_DIR}/news_data
 COPY scripts ${NEWS_DIR}/scripts
 
+# Build-time smoke test (the CD gate: a failed build fails the deploy job). The control plane plans
+# one cycle without network or writes, so imports, paths and the collector layout are checked here.
+RUN cd ${NEWS_DIR} \
+ && /app/data-lake-pipelines/.venv/bin/python /app/data-lake-pipelines/infra/scripts/data_lake/run_news_capture.py --dry-run --json \
+    | grep -q '"status": "dry-run"' \
+ && /app/data-lake-pipelines/.venv/bin/python -c "import sys; sys.path.insert(0, 'scripts'); import scheduled_capture"
+
 RUN useradd --create-home --uid 10001 capture && chown -R capture /bookdev
 USER capture
 WORKDIR ${NEWS_DIR}

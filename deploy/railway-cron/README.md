@@ -15,11 +15,16 @@ freshness gate) against the R2 lake, prints counts only, sends a failed run to S
 | `SENTRY_DSN`, `SENTRY_ENVIRONMENT=production` | Sentry project `content-news-scraper` (org `personal-yu0`) |
 | `HEARTBEAT_TOKEN` | Infisical `/monitoring` |
 
-Deploy (from the repository root, Railway CLI linked to `data-schedules` / `news-capture`):
-
-```bash
-npx -y @railway/cli@latest up --detach -s news-capture
-```
+Deploy: from Git only. A push to `main` runs CI, and its `deploy` job (platform-ci-workflows
+`deploy-railway.yml` v1.3.0, `mode: deploy`) asks Railway to build exactly that commit. The service
+is linked to this repository with **no branch trigger**, so nothing else deploys it. The repository
+secret `RAILWAY_TOKEN` is the `data-schedules` project token (Infisical `/railway`
+`RAILWAY_TOKEN_DATA_SCHEDULES`); the job runs only while the repository variable `CD_DEPLOY` is
+`true`. The image build runs the control plane's `--dry-run`, so a broken image fails the deploy.
+A cron job has no HTTP endpoint, so the smoke URL only shows that the uptime Worker watching the
+`news-capture` heartbeat is up; the job's own health is the heartbeat (alert after 5 h).
+Rollback: the command in the failed job's summary (`deploymentRollback`), then revert on `main`.
+Turn CD off: `gh variable set CD_DEPLOY -R bookchaowalit/content-news-scraper --body false`.
 
 Bump `DATA_LAKE_PIPELINES_REF` in the Dockerfile when the control plane changes.
 
