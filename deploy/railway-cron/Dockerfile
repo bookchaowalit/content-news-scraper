@@ -5,7 +5,7 @@
 FROM python:3.12-slim
 
 # data-lake-pipelines at a reviewed commit; bump deliberately.
-ARG DATA_LAKE_PIPELINES_REF=b6e9a1e357000963735ed59518a6caf01b882262
+ARG DATA_LAKE_PIPELINES_REF=73a8fb16d90217e3ca65a142c76c3cff7cf9de77
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.1 /uv /usr/local/bin/uv
 ENV UV_LINK_MODE=copy PYTHONUNBUFFERED=1 PYTHONUTF8=1 \
