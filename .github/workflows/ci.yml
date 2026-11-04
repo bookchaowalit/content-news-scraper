@@ -51,7 +51,7 @@ jobs:
       mode: deploy
       service-id: ba7596c8-026c-49dd-a370-0046b43bd9ec
       environment-id: 2d0fa1ec-fc9b-43b2-bd03-158f4b281a52
-      health-url: https://solo-empire-monitor.bookchaowalit.workers.dev/status
+      health-url: https://monitor.bookchaowalit.com/status
       health-expect: '"results"'
     secrets:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

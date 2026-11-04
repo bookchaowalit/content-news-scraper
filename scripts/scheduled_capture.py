@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from news.observability import init_sentry  # noqa: E402
 
-HEARTBEAT_URL = "https://solo-empire-monitor.bookchaowalit.workers.dev/heartbeat/news-capture"
+HEARTBEAT_URL = "https://monitor.bookchaowalit.com/heartbeat/news-capture"
 # The control plane bounds the collector at 120 s per attempt (2 attempts); this caps the rest.
 CYCLE_TIMEOUT_SECONDS = 900
 
