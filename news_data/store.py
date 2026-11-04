@@ -129,7 +129,15 @@ def deduplicate_history_items(items: list[dict[str, Any]]) -> list[dict[str, Any
     return unique
 
 
-def load_records(*, data_lake_uri: Optional[str] = None) -> dict[str, Any]:
+def _window(min_ingest_date: Optional[str]) -> dict[str, Any]:
+    """Only pass the bound when set, so older pinned data-lake-pipelines keep working."""
+    return {"min_ingest_date": min_ingest_date} if min_ingest_date else {}
+
+
+def load_records(
+    *, data_lake_uri: Optional[str] = None, min_ingest_date: Optional[str] = None
+) -> dict[str, Any]:
+    """Latest article rows; ``min_ingest_date`` (YYYY-MM-DD) skips older Bronze partitions."""
     return _ps_mod().load_bronze_dataset(
         _contract(),
         config.LAKE_DATASET_ARTICLES,
@@ -141,10 +149,13 @@ def load_records(*, data_lake_uri: Optional[str] = None) -> dict[str, Any]:
         item_builder=news_item_from_bronze,
         read_mode=config.LAKE_READ_MODE,
         read_fallback=config.LAKE_READ_FALLBACK,
+        **_window(min_ingest_date),
     )
 
 
-def load_history(*, data_lake_uri: Optional[str] = None) -> dict[str, Any]:
+def load_history(
+    *, data_lake_uri: Optional[str] = None, min_ingest_date: Optional[str] = None
+) -> dict[str, Any]:
     result = _ps_mod().load_bronze_dataset(
         _contract(),
         config.LAKE_DATASET_HISTORY,
@@ -156,6 +167,7 @@ def load_history(*, data_lake_uri: Optional[str] = None) -> dict[str, Any]:
         item_builder=news_item_from_bronze,
         read_mode=config.LAKE_READ_MODE,
         read_fallback=config.LAKE_READ_FALLBACK,
+        **_window(min_ingest_date),
     )
     items = result.get("items")
     if isinstance(items, list):

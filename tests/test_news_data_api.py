@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from news_data import config
 from news_data import api, store
@@ -73,3 +74,27 @@ class NewsDataApiTests(unittest.TestCase):
         items = store.deduplicate_history_items([base, duplicate, later])
         self.assertEqual(len(items), 2)
         self.assertEqual([item["record_id"] for item in items], ["Matichon|article-001#h0", "Matichon|article-001#h1"])
+
+class LakeWindowTests(unittest.TestCase):
+    def _calls(self, **kwargs: object) -> list[dict[str, object]]:
+        calls: list[dict[str, object]] = []
+
+        class FakeProductStore:
+            def load_bronze_dataset(self, *_args: object, **options: object) -> dict[str, object]:
+                calls.append(options)
+                return {"items": []}
+
+        with patch.object(store, "_ps_mod", return_value=FakeProductStore()), patch.object(
+            store, "_contract", return_value=object()
+        ):
+            store.load_records(data_lake_uri="s3://lake", **kwargs)  # type: ignore[arg-type]
+            store.load_history(data_lake_uri="s3://lake", **kwargs)  # type: ignore[arg-type]
+        return calls
+
+    def test_min_ingest_date_reaches_both_bronze_reads(self) -> None:
+        calls = self._calls(min_ingest_date="2026-11-03")
+        self.assertEqual([c["min_ingest_date"] for c in calls], ["2026-11-03", "2026-11-03"])
+
+    def test_unbounded_reads_omit_the_option_for_older_lake_pins(self) -> None:
+        self.assertTrue(all("min_ingest_date" not in c for c in self._calls()))
+
