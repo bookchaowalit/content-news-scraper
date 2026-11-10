@@ -24,7 +24,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from news.observability import init_sentry  # noqa: E402
+from news.observability import init_sentry, safe_code  # noqa: E402
 
 HEARTBEAT_URL = "https://monitor.bookchaowalit.com/heartbeat/news-capture"
 # The control plane bounds the collector at 120 s per attempt (2 attempts); this caps the rest.
@@ -64,7 +64,11 @@ def summarize(cycle: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def run_cycle(env: Mapping[str, str], runner: Runner) -> tuple[bool, str]:
-    """Run one cycle; return (ok, reason). The reason never contains collector output."""
+    """Run one cycle; return (ok, reason). The reason never contains collector output.
+
+    The reason goes to Sentry, so the cycle's ``error`` and ``status`` are passed on only
+    as short snake_case codes (:func:`safe_code`), never as free text.
+    """
     try:
         result = runner(
             build_command(env), capture_output=True, text=True, timeout=CYCLE_TIMEOUT_SECONDS, env=dict(env)
@@ -78,12 +82,12 @@ def run_cycle(env: Mapping[str, str], runner: Runner) -> tuple[bool, str]:
     if isinstance(cycle, dict):
         print(json.dumps(summarize(cycle), sort_keys=True))
     error = cycle.get("error") if isinstance(cycle, dict) else None
-    detail = f", {error}" if error else ""
+    detail = f", {safe_code(error)}" if error else ""
     if result.returncode != 0:
         return False, f"news capture failed (exit {result.returncode}{detail})"
     status = cycle.get("status") if isinstance(cycle, dict) else None
     if status != "ok":
-        return False, f"news capture finished with status {status}"
+        return False, f"news capture finished with status {safe_code(status)}"
     return True, "ok"
 
 

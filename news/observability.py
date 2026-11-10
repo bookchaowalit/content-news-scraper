@@ -8,15 +8,46 @@ Scrubbing (security review 2026-10-22): ``include_local_variables`` is off, requ
 bodies are never sent, and :func:`scrub_event` (``before_send``) drops frame
 ``vars``, request data, breadcrumbs and extras and blanks exception messages, so
 an uncaught crash reported by Sentry's excepthook carries the type only.
+
+Log text is free text (feed URLs with query strings, payloads, tokens), so it never
+becomes an event or a breadcrumb: init installs the logging integration with every
+level off (and stays off if that integration cannot be loaded), and
+:func:`scrub_event` drops ``logentry`` and any ``message`` that is not one of the
+known reporter formats (:func:`report_feed_failures`, ``scripts/scheduled_capture.py``).
 """
 
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Iterable, Mapping
 from importlib import import_module
 from types import ModuleType
 from typing import Any
+
+_NAME = r"[A-Za-z0-9_.-]{1,64}"
+_EXC = r"[A-Za-z_][A-Za-z0-9_]{0,63}"
+_CODE = r"[a-z][a-z0-9_]{0,47}"
+# Every message this repository sends, built only from feed names, counts, exception
+# class names, HTTP status codes and snake_case codes (see :func:`safe_code`).
+_REPORTED_MESSAGE = re.compile(
+    "|".join(
+        (
+            rf"news feeds: \d{{1,4}} of \d{{1,4}} failed: {_NAME} \({_EXC}\)(?:, {_NAME} \({_EXC}\))*",
+            r"news capture timed out after \d{1,6}s",
+            rf"news capture failed \(exit -?\d{{1,4}}(?:, {_CODE})?\)",
+            rf"news capture finished with status {_CODE}",
+            r"SOLO_EMPIRE_DATA_LAKE_URI is not set",
+            r"heartbeat post failed \(HTTP \d{3}\)",
+            rf"heartbeat post failed \({_EXC}\)",
+        )
+    )
+)
+
+
+def safe_code(value: object) -> str:
+    """``value`` if it is a short snake_case code, else ``"unrecognised"`` (no free text)."""
+    return value if isinstance(value, str) and re.fullmatch(_CODE, value) else "unrecognised"
 
 
 def _strip_frames(container: Any) -> None:
@@ -32,8 +63,11 @@ def _strip_frames(container: Any) -> None:
 
 def scrub_event(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any]:
     """``before_send``: drop locals, request data and free text that may hold payloads."""
-    for key in ("request", "breadcrumbs", "extra"):
+    for key in ("request", "breadcrumbs", "extra", "logentry"):
         event.pop(key, None)
+    message = event.get("message")
+    if not (isinstance(message, str) and _REPORTED_MESSAGE.fullmatch(message)):
+        event.pop("message", None)
     exception = event.get("exception")
     _strip_frames(exception)
     if isinstance(exception, dict):
@@ -51,6 +85,7 @@ def init_sentry(job: str) -> ModuleType | None:
         return None
     try:
         sdk = import_module("sentry_sdk")
+        logging_integration = import_module("sentry_sdk.integrations.logging").LoggingIntegration
     except ImportError:
         return None
     sdk.init(
@@ -61,6 +96,8 @@ def init_sentry(job: str) -> ModuleType | None:
         include_local_variables=False,
         max_request_body_size="never",
         before_send=scrub_event,
+        # No log record becomes an event, a breadcrumb or a Sentry log.
+        integrations=[logging_integration(level=None, event_level=None, sentry_logs_level=None)],
     )
     sdk.set_tag("job", job)
     return sdk

@@ -14,6 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import scheduled_capture as sc  # noqa: E402
 
+from news.observability import scrub_event  # noqa: E402
+
 ENV = {
     "SOLO_EMPIRE_DATA_LAKE_URI": "s3://bucket/lake",
     "PIPELINES_ROOT": "/app/data-lake-pipelines",
@@ -144,3 +146,47 @@ def test_failed_heartbeat_post_fails_the_run() -> None:
     code = sc.main(env=ENV, runner=lambda cmd, **kw: completed(0, OK_CYCLE), post=post, sentry=sentry)
     assert code == 1
     assert "heartbeat" in sentry.messages[0][0]
+
+
+def _survives_scrub(message: str) -> bool:
+    return scrub_event({"message": message}, {}).get("message") == message
+
+
+def test_collector_free_text_never_reaches_the_sentry_message() -> None:
+    # The cycle JSON comes from another process: only short snake_case codes are passed on.
+    leaky = {"status": "failed", "error": "Traceback ... GET https://x.test/?token=abc123"}
+    code, _, sentry = run(completed(1, leaky))
+    assert code == 1
+    ((message, _),) = sentry.messages
+    assert "token" not in message
+    assert message == "news capture failed (exit 1, unrecognised)"
+
+    _, _, sentry = run(completed(0, dict(OK_CYCLE, status="see https://x.test/?token=abc123")))
+    ((message, _),) = sentry.messages
+    assert message == "news capture finished with status unrecognised"
+
+
+def test_every_scheduled_capture_message_survives_the_scrubber() -> None:
+    # scrub_event keeps only known message formats; each real reporter message must match.
+    messages = []
+    for result in (
+        completed(2, "not json"),
+        completed(0, dict(OK_CYCLE, status="stale")),
+        completed(1, {"status": "failed", "error": "ingest_write_failed"}),
+        completed(1, {"status": "failed", "error": "Free text, not a code"}),
+        subprocess.TimeoutExpired(cmd="x", timeout=1),
+    ):
+        messages += [m for m, _ in run(result)[2].messages]
+    _, _, sentry = run(completed(0, OK_CYCLE), env={"PIPELINES_ROOT": "/x", "HEARTBEAT_TOKEN": "hb"})
+    messages += [m for m, _ in sentry.messages]
+    for exc in (sc.urllib.error.HTTPError("u", 403, "Forbidden", {}, None), OSError("down")):  # type: ignore[arg-type]
+        sentry = FakeSentry()
+
+        def post(url: str, token: str, body: dict[str, Any], exc: Exception = exc) -> None:
+            raise exc
+
+        sc.main(env=ENV, runner=lambda cmd, **kw: completed(0, OK_CYCLE), post=post, sentry=sentry)
+        messages += [m for m, _ in sentry.messages]
+
+    assert len(messages) == 8, messages
+    assert [m for m in messages if not _survives_scrub(m)] == []

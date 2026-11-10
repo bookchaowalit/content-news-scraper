@@ -26,6 +26,11 @@ import run_feeds
 SECRET = "token=abc123"
 
 
+class FakeLoggingIntegration:
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs = kwargs
+
+
 class FakeSentry(types.ModuleType):
     def __init__(self) -> None:
         super().__init__("sentry_sdk")
@@ -65,7 +70,10 @@ class Working:
 @pytest.fixture
 def fake_sentry(monkeypatch):
     sdk = FakeSentry()
+    logging_module = types.ModuleType("sentry_sdk.integrations.logging")
+    logging_module.LoggingIntegration = FakeLoggingIntegration  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "sentry_sdk", sdk)
+    monkeypatch.setitem(sys.modules, "sentry_sdk.integrations.logging", logging_module)
     monkeypatch.setenv("SENTRY_DSN", "https://public@example.invalid/1")
     monkeypatch.setenv("SENTRY_ENVIRONMENT", "test")
     return sdk
@@ -130,3 +138,63 @@ def test_init_is_scrubbed(fake_sentry, monkeypatch, tmp_path):
     cleaned = kwargs["before_send"](event, {})
     assert cleaned["exception"]["values"][0]["type"] == "FeedFetchError"
     assert SECRET not in repr(cleaned)
+
+
+def test_init_turns_off_log_events_and_log_breadcrumbs(fake_sentry, monkeypatch, tmp_path):
+    # A logger.error/exception (ours or httpx/urllib3) must not become an event carrying
+    # free log text (feed URLs, payloads): the logging integration has every level off.
+    _main(monkeypatch, tmp_path, (("thai_tech_news", Working),))
+    kwargs = fake_sentry.init_kwargs
+    assert kwargs is not None
+    logging = [i for i in kwargs["integrations"] if isinstance(i, FakeLoggingIntegration)]
+    assert len(logging) == 1
+    assert logging[0].kwargs == {"level": None, "event_level": None, "sentry_logs_level": None}
+
+
+def test_sentry_stays_off_without_the_logging_integration(fake_sentry, monkeypatch):
+    # Fail closed: if log capture cannot be turned off, do not initialise at all.
+    from news.observability import init_sentry
+
+    monkeypatch.delitem(sys.modules, "sentry_sdk.integrations.logging")
+    assert init_sentry("news-feeds") is None
+    assert fake_sentry.init_kwargs is None
+
+
+def test_scrub_drops_logentry():
+    from news.observability import scrub_event
+
+    event = {
+        "level": "error",
+        "logger": "httpx",
+        "logentry": {
+            "message": "HTTP Request: GET %s",
+            "params": [f"https://example.test/feed?{SECRET}"],
+            "formatted": f"HTTP Request: GET https://example.test/feed?{SECRET}",
+        },
+    }
+    cleaned = scrub_event(event, {})
+    assert "logentry" not in cleaned
+    assert SECRET not in repr(cleaned)
+    assert cleaned["level"] == "error"
+
+
+def test_scrub_keeps_only_the_reporters_own_message(fake_sentry, monkeypatch, tmp_path):
+    from news.observability import scrub_event
+
+    _main(monkeypatch, tmp_path, (("matichon_news", Broken), ("thai_tech_news", Broken)))
+    ((_, own),) = fake_sentry.messages
+    assert own == "news feeds: 2 of 2 failed: matichon_news (RuntimeError), thai_tech_news (RuntimeError)"
+    assert scrub_event({"message": own}, {})["message"] == own
+
+    foreign: tuple[object, ...] = (
+        f"HTTP Request: GET https://example.test/feed?{SECRET}",
+        f"news feeds: 1 of 2 failed: matichon_news (publisher payload {SECRET})",
+        "news feeds: 1 of 2 failed: matichon_news (RuntimeError)\nmore text",
+        "news capture failed (exit 1, Traceback: boom)",
+        "",
+        {"formatted": SECRET},
+    )
+    for message in foreign:
+        cleaned = scrub_event({"message": message, "level": "error"}, {})
+        assert "message" not in cleaned, message
+        assert cleaned["level"] == "error"
