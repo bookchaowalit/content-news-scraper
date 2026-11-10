@@ -75,6 +75,7 @@ class NewsDataApiTests(unittest.TestCase):
         self.assertEqual(len(items), 2)
         self.assertEqual([item["record_id"] for item in items], ["Matichon|article-001#h0", "Matichon|article-001#h1"])
 
+
 class LakeWindowTests(unittest.TestCase):
     def _calls(self, **kwargs: object) -> list[dict[str, object]]:
         calls: list[dict[str, object]] = []
@@ -84,8 +85,9 @@ class LakeWindowTests(unittest.TestCase):
                 calls.append(options)
                 return {"items": []}
 
-        with patch.object(store, "_ps_mod", return_value=FakeProductStore()), patch.object(
-            store, "_contract", return_value=object()
+        with (
+            patch.object(store, "_ps_mod", return_value=FakeProductStore()),
+            patch.object(store, "_contract", return_value=object()),
         ):
             store.load_records(data_lake_uri="s3://lake", **kwargs)  # type: ignore[arg-type]
             store.load_history(data_lake_uri="s3://lake", **kwargs)  # type: ignore[arg-type]
@@ -97,4 +99,3 @@ class LakeWindowTests(unittest.TestCase):
 
     def test_unbounded_reads_omit_the_option_for_older_lake_pins(self) -> None:
         self.assertTrue(all("min_ingest_date" not in c for c in self._calls()))
-
