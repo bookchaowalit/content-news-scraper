@@ -2,7 +2,7 @@
 name = "content-news-scraper"
 version = "0.1.0"
 description = "News domain producer (publisher RSS/Atom capture) and news.v1 read-only API adapter."
-requires-python = ">=3.11"  # the shared data-lake runtime (dev extra) needs 3.11
+requires-python = ">=3.11.5"  # the shared data-lake runtime (dev extra) needs 3.11
 # Runtime pins (previously requirements.txt + constraints.txt; uv.lock now pins the full set).
 dependencies = [
     "httpx==0.28.1",
